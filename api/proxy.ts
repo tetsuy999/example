@@ -1,30 +1,35 @@
 // api/proxy.ts
-export const config = { runtime: 'edge' };
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import https from 'node:https'; 
 
-export default async function handler(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const url = searchParams.get('url');
-  if (!url) return new Response('Missing url', { status: 400 });
-
+export default function (req: VercelRequest, res: VercelResponse) {
+  const url = req.query.url as string | undefined;
+  if (!url) return res.status(400).send('missing url');
 
   if (!url.startsWith('https://static-assets-1.truthsocial.com/')) {
-    return new Response('Forbidden', { status: 403 });
+    return res.status(403).send('forbidden');
   }
 
-  const upstream = await fetch(url, {
-    method: req.method, 
-    headers: { 'User-Agent': 'IFTTT-Proxy' },
-    redirect: 'follow',
-  });
-  if (!upstream.ok) {
-    return new Response(`Upstream ${upstream.status}`, { status: upstream.status });
-  }
+  // HEAD 
+  https.get(url, { method: 'HEAD' }, head => {
+    const mime = head.headers['content-type'] ?? 'image/jpeg';
+    const len  = head.headers['content-length'];
 
-  const headers = new Headers(upstream.headers);
-  headers.set('Content-Type', headers.get('content-type') ?? 'image/jpeg');
-  headers.set('Cache-Control', 'public, max-age=300');
+    // 
+    if (req.method === 'HEAD') {
+      res.status(200)
+         .setHeader('Content-Type', mime)
+         .setHeader('Cache-Control', 'public, max-age=300');
+      if (len) res.setHeader('Content-Length', len);
+      return res.end();
+    }
 
-  const body = req.method === 'HEAD' ? new Uint8Array(0) : upstream.body;
-
-  return new Response(body, { status: 200, headers });
+    //
+    https.get(url, img => {
+      res.status(200)
+         .setHeader('Content-Type', mime)
+         .setHeader('Cache-Control', 'public, max-age=300');
+      img.pipe(res);
+    }).on('error', () => res.status(502).end('upstream error'));
+  }).on('error', () => res.status(502).end('upstream head error'));
 }
