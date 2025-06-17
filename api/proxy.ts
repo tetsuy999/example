@@ -1,35 +1,31 @@
-// api/proxy.ts
-import type { VercelRequest, VercelResponse } from '@vercel/node';
-import https from 'node:https'; 
+// api/proxy.js
+import https from 'https';
 
-export default function (req: VercelRequest, res: VercelResponse) {
-  const url = req.query.url as string | undefined;
-  if (!url) return res.status(400).send('missing url');
+export default function handler(req, res) {
+  const url = req.query.url;
+  if (!url) return res.status(400).end('missing url');
 
   if (!url.startsWith('https://static-assets-1.truthsocial.com/')) {
-    return res.status(403).send('forbidden');
+    return res.status(403).end('forbidden');
   }
 
-  // HEAD 
-  https.get(url, { method: 'HEAD' }, head => {
-    const mime = head.headers['content-type'] ?? 'image/jpeg';
-    const len  = head.headers['content-length'];
+  https.get(url, { headers: { 'User-Agent': 'IFTTT-Proxy' } }, upstream => {
+    const mime = upstream.headers['content-type'] || 'image/jpeg';
+    const len  = upstream.headers['content-length'];
 
-    // 
     if (req.method === 'HEAD') {
-      res.status(200)
-         .setHeader('Content-Type', mime)
-         .setHeader('Cache-Control', 'public, max-age=300');
-      if (len) res.setHeader('Content-Length', len);
-      return res.end();
+      res.writeHead(200, {
+        'Content-Type':  mime,
+        'Content-Length': len || 1,
+        'Cache-Control': 'public, max-age=300',
+      });
+      return res.end(' '); 
     }
 
-    //
-    https.get(url, img => {
-      res.status(200)
-         .setHeader('Content-Type', mime)
-         .setHeader('Cache-Control', 'public, max-age=300');
-      img.pipe(res);
-    }).on('error', () => res.status(502).end('upstream error'));
-  }).on('error', () => res.status(502).end('upstream head error'));
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Cache-Control': 'public, max-age=300',
+    });
+    upstream.pipe(res);
+  }).on('error', () => res.status(502).end('upstream error'));
 }
