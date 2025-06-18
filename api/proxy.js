@@ -22,7 +22,7 @@ const BROWSER_HEADERS = {
   'Sec-Fetch-Dest': 'image',
   'Sec-Fetch-Mode': 'no-cors',
   'Sec-Fetch-Site': 'same-site',
-  'Accept-Encoding': 'gzip, deflate, br',
+  'Accept-Encoding': 'identity',
 };
 
 export default function handler(req, res) {
