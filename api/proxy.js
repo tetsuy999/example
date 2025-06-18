@@ -1,4 +1,4 @@
-// api/proxy.js 
+// api/proxy.js
 import https from 'https';
 
 const BROWSER_HEADERS = {
@@ -9,20 +9,16 @@ const BROWSER_HEADERS = {
   Accept:
     'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
   'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-  'Cache-Control': 'max-age=0',
-  DNT: '1',
-  // site
+  'Accept-Encoding': 'identity',
   Referer: 'https://truthsocial.com/',
-  // Client hints
+  DNT: '1',
+  'Sec-Fetch-Dest': 'image',
+  'Sec-Fetch-Mode': 'no-cors',
+  'Sec-Fetch-Site': 'same-site',
   'Sec-CH-UA':
     '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
   'Sec-CH-UA-Mobile': '?0',
   'Sec-CH-UA-Platform': '"Windows"',
-  // Fetch metadata
-  'Sec-Fetch-Dest': 'image',
-  'Sec-Fetch-Mode': 'no-cors',
-  'Sec-Fetch-Site': 'same-site',
-  'Accept-Encoding': 'identity',
 };
 
 export default function handler(req, res) {
@@ -33,25 +29,33 @@ export default function handler(req, res) {
     return res.status(403).end('forbidden');
   }
 
-  https.get(target, { method: 'HEAD', headers: BROWSER_HEADERS }, head => {
-    const mime = head.headers['content-type'] || 'image/jpeg';
-    const len  = head.headers['content-length'] || 1;
+  const getUpstream = (method, cb) =>
+    https.get(
+      target,
+      { method, headers: BROWSER_HEADERS },
+      cb
+    ).on('error', () => res.status(502).end('upstream error'));
 
-    if (req.method === 'HEAD') {
+  if (req.method === 'HEAD') {
+    return getUpstream('HEAD', head => {
+      const mime = head.headers['content-type'] || 'image/jpeg';
+      const len  = head.headers['content-length'] || '1';
+
       res.writeHead(200, {
-        'Content-Type'  : mime,
+        'Content-Type': mime,
         'Content-Length': len,
-        'Cache-Control' : 'public, max-age=300',
-      });
-      return res.end(' ');
-    }
-
-    https.get(target, { headers: BROWSER_HEADERS }, img => {
-      res.writeHead(200, {
-        'Content-Type' : mime,
         'Cache-Control': 'public, max-age=300',
       });
-      img.pipe(res);
-    }).on('error', () => res.status(502).end('upstream get error'));
-  }).on('error', () => res.status(502).end('upstream head error'));
+      return res.end(' ');
+    });
+  }
+
+  return getUpstream('GET', img => {
+    const mime = img.headers['content-type'] || 'image/jpeg';
+    res.writeHead(200, {
+      'Content-Type': mime,
+      'Cache-Control': 'public, max-age=300',
+    });
+    img.pipe(res);
+  });
 }
